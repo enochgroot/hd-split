@@ -1,0 +1,6 @@
+name            hd-split
+description     Contract to split payments from arbitrary tokens
+version         0.0.1
+
+author          Enoch Groot <enochgroot@protonmail.com>
+license         GPL-3.0-or-later

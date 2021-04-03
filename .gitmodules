@@ -1,0 +1,9 @@
+[submodule "lib/ds-test"]
+	path = lib/ds-test
+	url = https://github.com/dapphub/ds-test
+[submodule "lib/erc721"]
+	path = lib/erc721
+	url = https://github.com/brianmcmichael/erc721
+[submodule "lib/ds-math"]
+	path = lib/ds-math
+	url = https://github.com/dapphub/ds-math
