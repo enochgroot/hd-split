@@ -26,25 +26,33 @@ interface IERC20 {
 
 contract HDSplit {
 
-    address payable[] public addrs;
+    address payable[] public folks;
     uint256[] public bps;
 
     // events
     event Push();
     event Sent(address guy, address gem, uint256 amt);
+    event Receive(address guy, uint256 amt);
 
-    constructor(address payable[] memory _addrs, uint256[] memory _bps) {
-        require(_addrs.length == _bps.length, "HDSplit/length-must-match");
+    // math
+    uint256 THOUSAND = 10 ** 4;
+
+    constructor(address payable[] memory _folks, uint256[] memory _bps) {
+        require(_folks.length == _bps.length, "HDSplit/length-must-match");
 
         uint256 _total;
 
-        for (uint256 i = 0; i < _addrs.length; i++) {
-            _total = _bps[i];
-            addrs.push(_addrs[i]);
+        for (uint256 i = 0; i < _folks.length; i++) {
+            _total += _bps[i];
+            folks.push(_folks[i]);
             bps.push(_bps[i]);
         }
 
         require(_total == 10000, "HDSplit/basis-points-must-total-10000");
+    }
+
+    receive() external payable {
+        emit Receive(msg.sender, msg.value);
     }
 
     function push() external {
@@ -52,22 +60,33 @@ contract HDSplit {
     }
 
     function push(address _token) public {
-        address _addr;
-        uint256 _amt;
+        address payable _addr;
+        uint256[] memory _amts = new uint256[](folks.length);
 
         if (_token == address(0)) {
-            for (uint256 i = 0; i < addrs.length; i++) {
-                _addr = addrs[i]; 
-                _amt  = address(this).balance * bps[i];
-                emit Sent(_addr, _token, _amt);
-                addrs[i].send(_amt);
+            // figure out ETH amounts first
+            for (uint256 i = 0; i < folks.length; i++) {
+                _amts[i] = (address(this).balance * bps[i]) / THOUSAND;
+            }
+
+            // send ETH to folks
+            for (uint256 i = 0; i < folks.length; i++) {
+                _addr = folks[i];
+                emit Sent(_addr, _token, _amts[i]);
+                require(_addr.send(_amts[i]) == true, "HDSplit/send-failed");
             }
         } else {
-            for (uint256 i = 0; i < addrs.length; i++) {
-                _addr = addrs[i]; 
-                _amt  = IERC20(_token).balanceOf(address(this)) * bps[i];
-                emit Sent(_addr, _token, _amt);
-                IERC20(_token).transfer(_addr, _amt);
+            // figure out token amounts first
+            for (uint256 i = 0; i < folks.length; i++) {
+                _amts[i] = (IERC20(_token).balanceOf(address(this)) * bps[i]) /
+                    THOUSAND;
+            }
+
+            // send token to folks
+            for (uint256 i = 0; i < folks.length; i++) {
+                _addr = folks[i];
+                emit Sent(_addr, _token, _amts[i]);
+                IERC20(_token).transfer(_addr, _amts[i]);
             }
         }
 
