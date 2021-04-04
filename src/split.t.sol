@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "ds-test/test.sol";
+import "ds-token/token.sol";
 
 import "./split.sol";
 
@@ -26,6 +27,8 @@ contract SplitTest is DSTest {
     User bob;
     User carol;
 
+    DSToken gold;
+
     function setUp() public {
         alice  = new User();
         bob    = new User();
@@ -48,6 +51,9 @@ contract SplitTest is DSTest {
         assertEq(address(split).balance, 100 ether);
 
         // magic up some token and send to split
+        gold = new DSToken("GOLD");
+        gold.mint(100 ether);
+        gold.transfer(address(split), 100 ether);
     }
 
     function testPushETH() public {
