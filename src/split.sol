@@ -25,14 +25,21 @@ interface IERC20 {
 }
 
 contract HDSplit {
+    // auth
+    mapping (address => uint256) public wards;
+    modifier auth {
+        require(wards[msg.sender] == 1, "HDSplit/not-authorized");
+        _;
+    }
 
     address payable[] public folks;
     uint256[] public bps;
 
     // events
     event Push();
-    event Sent(address guy, address gem, uint256 amt);
-    event Receive(address guy, uint256 amt);
+    event Rely(address indexed usr);
+    event Sent(address indexed guy, address indexed gem, uint256 amt);
+    event Receive(address indexed guy, uint256 amt);
 
     // math
     uint256 THOUSAND = 10 ** 4;
@@ -46,6 +53,8 @@ contract HDSplit {
             _total += _bps[i];
             folks.push(_folks[i]);
             bps.push(_bps[i]);
+            wards[_folks[i]] = 1;
+            emit Rely(_folks[i]);
         }
 
         require(_total == 10000, "HDSplit/basis-points-must-total-10000");
@@ -59,7 +68,7 @@ contract HDSplit {
         push(address(0));
     }
 
-    function push(address _token) public {
+    function push(address _token) public auth {
         address payable _addr;
         uint256[] memory _amts = new uint256[](folks.length);
 
