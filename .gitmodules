@@ -4,3 +4,6 @@
 [submodule "lib/erc721"]
 	path = lib/erc721
 	url = https://github.com/brianmcmichael/erc721
+[submodule "lib/ds-token"]
+	path = lib/ds-token
+	url = https://github.com/dapphub/ds-token
