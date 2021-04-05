@@ -25,15 +25,15 @@ interface IERC20 {
 }
 
 contract HDSplit {
+    address payable[] public folks;
+    uint256[] public bps;
+
     // auth
     mapping (address => uint256) public wards;
     modifier auth {
         require(wards[msg.sender] == 1, "HDSplit/not-authorized");
         _;
     }
-
-    address payable[] public folks;
-    uint256[] public bps;
 
     // events
     event Push();
