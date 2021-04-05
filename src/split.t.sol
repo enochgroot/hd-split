@@ -8,7 +8,7 @@ import "./split.sol";
 
 contract User {
 
-    constructor () {
+    constructor () public {
         // do nothing
     }
 
