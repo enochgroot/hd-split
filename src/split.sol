@@ -2,7 +2,7 @@
 
 /// split.sol -- splits funds sent to this contract
 
-// Copyright (C) 2020 HDSplit
+// Copyright (C) 2021 HDSplit
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.6.12;
 
 interface IERC20 {
     function balanceOf(address) external view returns (uint256);
@@ -43,14 +43,20 @@ contract HDSplit {
 
     // math
     uint256 THOUSAND = 10 ** 4;
+    function add(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        require((z = x + y) >= x);
+    }
+    function mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        require(y == 0 || (z = x * y) / y == x);
+    }
 
-    constructor(address payable[] memory _folks, uint256[] memory _bps) {
+    constructor(address payable[] memory _folks, uint256[] memory _bps) public {
         require(_folks.length == _bps.length, "HDSplit/length-must-match");
 
         uint256 _total;
 
         for (uint256 i = 0; i < _folks.length; i++) {
-            _total += _bps[i];
+            _total = add(_total, _bps[i]);
             folks.push(_folks[i]);
             bps.push(_bps[i]);
             wards[_folks[i]] = 1;
@@ -75,7 +81,7 @@ contract HDSplit {
         if (_token == address(0)) {
             // figure out ETH amounts first
             for (uint256 i = 0; i < folks.length; i++) {
-                _amts[i] = (address(this).balance * bps[i]) / THOUSAND;
+                _amts[i] = mul(address(this).balance, bps[i]) / THOUSAND;
             }
 
             // send ETH to folks
@@ -87,8 +93,8 @@ contract HDSplit {
         } else {
             // figure out token amounts first
             for (uint256 i = 0; i < folks.length; i++) {
-                _amts[i] = (IERC20(_token).balanceOf(address(this)) * bps[i]) /
-                    THOUSAND;
+                _amts[i] = mul(IERC20(_token).balanceOf(address(this)), bps[i])
+                    / THOUSAND;
             }
 
             // send token to folks

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.0;
+
+pragma solidity ^0.6.12;
 
 import "ds-test/test.sol";
-import "./test/token.sol";
-
+import "ds-token/token.sol";
 import "./split.sol";
 
 contract User {
