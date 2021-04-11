@@ -22,11 +22,23 @@ pragma solidity ^0.6.12;
 interface IERC20 {
     function balanceOf(address) external view returns (uint256);
     function transfer(address, uint256) external returns (bool);
+    function transferFrom(address, address, uint256) external returns (bool);
 }
 
 contract HDSplit {
+    address immutable dai;
     address payable[] public folks;
     uint256[] public bps;
+
+    // token->total
+    mapping (address => uint256) public total;
+
+    // folk[i]->token->balance
+    mapping (address => mapping (address => uint256)) public balance;
+
+    // folks[i]->folk[i]->owe: DAI amount owed per person
+    // A       ->B      ->owe: B owes A owe DAI
+    mapping (address => mapping (address => uint256)) public owe;
 
     // auth
     mapping (address => uint256) public wards;
@@ -38,19 +50,27 @@ contract HDSplit {
     // events
     event Push();
     event Rely(address indexed usr);
+    event Comp(address indexed sender, address indexed recipient, uint256 amt);
     event Sent(address indexed guy, address indexed gem, uint256 amt);
     event Receive(address indexed guy, uint256 amt);
 
     // math
     uint256 THOUSAND = 10 ** 4;
-    function add(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require((z = x + y) >= x);
+    function add(uint256 _x, uint256 _y) internal pure returns (uint256 _z) {
+        require((_z = _x + _y) >= _x);
     }
-    function mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require(y == 0 || (z = x * y) / y == x);
+    function sub(uint256 _x, uint256 _y) internal pure returns (uint256 _z) {
+        require((_z = _x - _y) <= _x);
+    }
+    function mul(uint256 _x, uint256 _y) internal pure returns (uint256 _z) {
+        require(_y == 0 || (_z = _x * _y) / _y == _x);
     }
 
-    constructor(address payable[] memory _folks, uint256[] memory _bps) public {
+    constructor(
+        address _dai,
+        address payable[] memory _folks,
+        uint256[] memory _bps
+    ) public {
         require(_folks.length == _bps.length, "HDSplit/length-must-match");
 
         uint256 _total;
@@ -62,49 +82,101 @@ contract HDSplit {
             wards[_folks[i]] = 1;
             emit Rely(_folks[i]);
         }
-
         require(_total == 10000, "HDSplit/basis-points-must-total-10000");
+
+        dai = _dai;
     }
 
     receive() external payable {
         emit Receive(msg.sender, msg.value);
     }
 
-    function push() external {
-        push(address(0));
+    function tell(uint256 _wad) external auth {
+        require(dai != address(0), "HDSplit/no-compensation-plan");
+
+        address payable[] memory _folks = folks;
+
+        for (uint256 i = 0; i < _folks.length; i++) {
+            if (msg.sender != _folks[i]) {
+                owe[msg.sender][_folks[i]] = add(
+                    owe[msg.sender][_folks[i]],
+                    mul(_wad, bps[i]) / THOUSAND
+                );
+            }
+        }
     }
 
-    function push(address _token) public auth {
-        address payable _addr;
-        uint256[] memory _amts = new uint256[](folks.length);
+    function take() external {
+        take(address(0));
+    }
+
+    function take(address _token) public auth {
+        uint256 _moar;
+        address payable[] memory _folks = folks;
 
         if (_token == address(0)) {
-            // figure out ETH amounts first
-            for (uint256 i = 0; i < folks.length; i++) {
-                _amts[i] = mul(address(this).balance, bps[i]) / THOUSAND;
-            }
-
-            // send ETH to folks
-            for (uint256 i = 0; i < folks.length; i++) {
-                _addr = folks[i];
-                emit Sent(_addr, _token, _amts[i]);
-                require(_addr.send(_amts[i]) == true, "HDSplit/send-failed");
-            }
+            _moar = sub(address(this).balance, total[_token]);
         } else {
-            // figure out token amounts first
-            for (uint256 i = 0; i < folks.length; i++) {
-                _amts[i] = mul(IERC20(_token).balanceOf(address(this)), bps[i])
-                    / THOUSAND;
-            }
+            _moar = sub(IERC20(_token).balanceOf(address(this)), total[_token]);
+        }
 
-            // send token to folks
-            for (uint256 i = 0; i < folks.length; i++) {
-                _addr = folks[i];
-                emit Sent(_addr, _token, _amts[i]);
-                IERC20(_token).transfer(_addr, _amts[i]);
+        if (_moar > 0) {
+            total[_token] = add(total[_token], _moar);
+
+            // figure out everyong's amounts
+            for (uint256 i = 0; i < _folks.length; i++) {
+                balance[_folks[i]][_token] = add(
+                    balance[_folks[i]][_token],
+                    mul(_moar, bps[i]) / THOUSAND
+                );
             }
         }
 
+        // pay expenses
+        for (uint256 i = 0; i < _folks.length; i++) {
+            comp(_folks[i]);
+        }
+
+        send(_token);
+
         emit Push();
     }
+
+    function send(address _token) internal {
+        uint256 _amt = balance[msg.sender][_token];
+        balance[msg.sender][_token] = 0;
+        total[_token] = sub(total[_token], _amt);
+        emit Sent(msg.sender, _token, _amt);
+        if (_token == address(0)) {
+            require(msg.sender.send(_amt) == true, "HDSplit/send-failed");
+        } else {
+            bytes memory _data = abi.encodeWithSelector(
+                IERC20(_token).transfer.selector, msg.sender, _amt
+            );
+            (bool _success, bytes memory _returndata) = _token.call(_data);
+            require(_success, "HDSplit/transfer-failed-1");
+
+            if (_returndata.length > 0) {
+                require(
+                    abi.decode(_returndata, (bool)), "HDSplit/transfer-failed-2"
+                );
+            }
+        }
+    }
+
+    function comp(address _guy) internal {
+        if (dai == address(0)) { return; }
+
+        uint256 _amt = owe[_guy][msg.sender];
+
+        if (_amt > 0) {
+            owe[_guy][msg.sender] = 0;
+            emit Comp(msg.sender, _guy, _amt);
+            require(
+                IERC20(dai).transferFrom(msg.sender, _guy, _amt),
+                "HDSplit/dai-transfer-failed"
+            );
+        }
+    }
+
 }
