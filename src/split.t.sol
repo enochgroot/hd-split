@@ -68,7 +68,7 @@ contract SplitTest is DSTest {
         dai.transfer(address(carol),   1000 ether);
         dai.transfer(address(mallory), 1000 ether);
 
-        split = new HDSplit(address(dai), peeps, bps);
+        split = new HDSplit(address(dai), 50_000 ether, peeps, bps);
 
         // magic up some ETH and send to split
         payable(address(split)).transfer(100 ether);
@@ -320,6 +320,7 @@ contract SplitTest is DSTest {
         assertEq(dai.balanceOf(address(carol)), 1000 ether);
 
         alice.tell(split, 100 ether);
+        assertEq(split.debt(), 50 ether);
 
         alice.takeETH(split);
 
@@ -340,6 +341,7 @@ contract SplitTest is DSTest {
         assertEq(dai.balanceOf(address(alice)), 1025 ether); // owes alice  0
         assertEq(dai.balanceOf(address(bob)),    975 ether); // owes alice  0
         assertEq(dai.balanceOf(address(carol)), 1000 ether); // owes alice 25
+        assertEq(split.debt(), 25 ether);
 
         assertEq(address(alice).balance,   50 ether);
         assertEq(address(bob).balance,     25 ether);
@@ -353,6 +355,7 @@ contract SplitTest is DSTest {
         assertEq(dai.balanceOf(address(alice)), 1050 ether); // owes alice  0
         assertEq(dai.balanceOf(address(bob)),    975 ether); // owes alice  0
         assertEq(dai.balanceOf(address(carol)),  975 ether); // owes alice  0
+        assertEq(split.debt(), 0 ether);
 
         assertEq(address(alice).balance,   50 ether);
         assertEq(address(bob).balance,     25 ether);
@@ -367,12 +370,14 @@ contract SplitTest is DSTest {
 
         // bob also has an expense of 100 DAI
         bob.tell(split, 100 ether);
+        assertEq(split.debt(), 75 ether);
 
         alice.takeETH(split);
 
         assertEq(dai.balanceOf(address(alice)), 1000 ether); // owes bob  0
         assertEq(dai.balanceOf(address(bob)),   1025 ether); // owes bob 25
         assertEq(dai.balanceOf(address(carol)),  975 ether); // owes bob 25
+        assertEq(split.debt(), 25 ether);
 
         assertEq(address(alice).balance,  100 ether);
         assertEq(address(bob).balance,     25 ether); // still owed 25
@@ -387,12 +392,14 @@ contract SplitTest is DSTest {
 
         // alice has another expense of 100 DAI
         alice.tell(split, 100 ether);
+        assertEq(split.debt(), 75 ether);
 
         bob.takeETH(split);
 
         assertEq(dai.balanceOf(address(alice)), 1025 ether); // owes alice 50, bob  0
-        assertEq(dai.balanceOf(address(bob)),   1000 ether); // owes alice 25, bob 25
+        assertEq(dai.balanceOf(address(bob)),   1000 ether); // owes alice  0, bob  0
         assertEq(dai.balanceOf(address(carol)),  975 ether); // owes alice 25, bob 25
+        assertEq(split.debt(), 50 ether);
 
         assertEq(address(alice).balance,  100 ether); // still owed 50
         assertEq(address(bob).balance,     75 ether);
@@ -403,8 +410,9 @@ contract SplitTest is DSTest {
         carol.takeETH(split);
 
         assertEq(dai.balanceOf(address(alice)), 1050 ether); // owes alice 50, bob  0
-        assertEq(dai.balanceOf(address(bob)),   1025 ether); // owes alice 25, bob 25
+        assertEq(dai.balanceOf(address(bob)),   1025 ether); // owes alice  0, bob  0
         assertEq(dai.balanceOf(address(carol)),  925 ether); // owes alice  0, bob  0
+        assertEq(split.debt(), 0 ether);
 
         assertEq(address(alice).balance,  100 ether); // still owed 50
         assertEq(address(bob).balance,     75 ether);
@@ -415,8 +423,9 @@ contract SplitTest is DSTest {
         alice.takeETH(split);
 
         assertEq(dai.balanceOf(address(alice)), 1050 ether); // owes alice  0, bob  0
-        assertEq(dai.balanceOf(address(bob)),   1025 ether); // owes alice 25, bob 25
+        assertEq(dai.balanceOf(address(bob)),   1025 ether); // owes alice  0, bob  0
         assertEq(dai.balanceOf(address(carol)),  925 ether); // owes alice  0, bob  0
+        assertEq(split.debt(), 0 ether);
 
         assertEq(address(alice).balance,  150 ether);
         assertEq(address(bob).balance,     75 ether);
@@ -436,6 +445,36 @@ contract SplitTest is DSTest {
 
     function testFailThirdPartyTell() public {
         mallory.tell(split, 10_000 ether);
+    }
+
+    function testTellLimit() public {
+        alice.tell(split, 10_000 ether);
+        assertEq(split.debt(), 5_000 ether);
+        bob.tell(split, 10_000 ether);
+        assertEq(split.debt(), 12_500 ether);
+        carol.tell(split, 10_000 ether);
+        assertEq(split.debt(), 20_000 ether);
+        alice.tell(split, 10_000 ether);
+        assertEq(split.debt(), 25_000 ether);
+        bob.tell(split, 10_000 ether);
+        assertEq(split.debt(), 32_500 ether);
+        carol.tell(split, 10_000 ether);
+        assertEq(split.debt(), 40_000 ether);
+        alice.tell(split, 10_000 ether);
+        assertEq(split.debt(), 45_000 ether);
+    }
+
+    function testFailTellLimit() public {
+        alice.tell(split, 10_000 ether);
+        bob.tell(split, 10_000 ether);
+        carol.tell(split, 10_000 ether);
+        alice.tell(split, 10_000 ether);
+        bob.tell(split, 10_000 ether);
+        carol.tell(split, 10_000 ether);
+        alice.tell(split, 10_000 ether);
+        assertEq(split.debt(), 45_000 ether);
+        // fail
+        bob.tell(split, 10_000 ether);
     }
 
 }

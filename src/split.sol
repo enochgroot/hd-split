@@ -26,7 +26,9 @@ interface IERC20 {
 }
 
 contract HDSplit {
-    address immutable dai;
+    address immutable public dai;
+    uint256 public debt;
+    uint256 public limit;
     address payable[] public folks;
     uint256[] public bps;
 
@@ -68,6 +70,7 @@ contract HDSplit {
 
     constructor(
         address _dai,
+        uint256 _limit,
         address payable[] memory _folks,
         uint256[] memory _bps
     ) public {
@@ -84,7 +87,8 @@ contract HDSplit {
         }
         require(_total == 10000, "HDSplit/basis-points-must-total-10000");
 
-        dai = _dai;
+        dai   = _dai;
+        limit = _limit;
     }
 
     receive() external payable {
@@ -98,12 +102,15 @@ contract HDSplit {
 
         for (uint256 i = 0; i < _folks.length; i++) {
             if (msg.sender != _folks[i]) {
+                uint256 _amt = mul(_wad, bps[i]) / THOUSAND;
+                debt = add(debt, _amt);
                 owe[msg.sender][_folks[i]] = add(
-                    owe[msg.sender][_folks[i]],
-                    mul(_wad, bps[i]) / THOUSAND
+                    owe[msg.sender][_folks[i]], _amt
                 );
             }
         }
+
+        require(debt <= limit, "HDSplit/over-debt-limit");
     }
 
     function take() external {
@@ -171,6 +178,7 @@ contract HDSplit {
 
         if (_amt > 0) {
             owe[_guy][msg.sender] = 0;
+            debt = sub(debt, _amt);
             emit Comp(msg.sender, _guy, _amt);
             require(
                 IERC20(dai).transferFrom(msg.sender, _guy, _amt),
